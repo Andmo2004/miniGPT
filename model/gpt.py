@@ -1,11 +1,13 @@
-# model/gpt.py – Full GPT Model Assembly  ★ HARD FILE ★
-#
+# model/gpt.py – Full GPT Model Assembly HARD FILE 
+
+import torch.nn as nn
+from block import TransformerBlock
+from norm import RMSNorm
+
 # TODO: Assemble the full GPT model by stacking embeddings, transformer
 #       blocks, a final norm, and a language-model head.
 #
-# ══════════════════════════════════════════════════════════════════════════
 # ── ARCHITECTURE OVERVIEW ──
-# ══════════════════════════════════════════════════════════════════════════
 #
 #   token_ids (B, T)            ← integer input
 #       │
@@ -24,75 +26,77 @@
 #       └──► Linear(d_model, vocab_size, bias=False)   ← "LM head"
 #                → (B, T, vocab_size)   raw logits over vocabulary
 #
-# ══════════════════════════════════════════════════════════════════════════
-# ── CLASS: GPT(nn.Module) ──
-# ══════════════════════════════════════════════════════════════════════════
-#
-#   def __init__(self, config):
-#       # TODO:
-#       #   1. Call super().__init__()
-#       #   2. Store the config: self.config = config
-#       #
-#       #   3. Create the embedding layers:
-#       #        self.tok_emb = nn.Embedding(config.vocab_size, config.d_model)
-#       #        self.pos_emb = nn.Embedding(config.block_size, config.d_model)
-#       #        self.drop    = nn.Dropout(config.dropout)
-#       #
-#       #   4. Create the stack of transformer blocks:
-#       #        self.blocks = nn.ModuleList([
-#       #            TransformerBlock(config) for _ in range(config.n_layers)
-#       #        ])
-#       #        ⚠️ Use nn.ModuleList, NOT a plain Python list!
-#       #           A plain list won't register parameters with PyTorch.
-#       #
-#       #   5. Final layer norm:
-#       #        self.ln_f = RMSNorm(config.d_model)
-#       #
-#       #   6. Language model head (projects d_model → vocab_size):
-#       #        self.lm_head = nn.Linear(config.d_model, config.vocab_size, bias=False)
-#       #
-#       #   7. ★ WEIGHT TYING ★
-#       #        self.tok_emb.weight = self.lm_head.weight
-#       #
-#       #        This makes the input embedding and the output projection
-#       #        share the SAME weight matrix.  Why?
-#       #        - Reduces total parameters by ~vocab_size × d_model
-#       #        - The embedding learns "what does each token mean" and the
-#       #          LM head learns "which token should come next" — these are
-#       #          related tasks, so sharing weights is beneficial.
-#       #        - Used in GPT-2, LLaMA, and most modern LLMs.
-#       #
-#       #   8. Initialize weights:
-#       #        self.apply(self._init_weights)
-#       #
-#       #   9. Print total parameter count (nice for sanity checking):
-#       #        n_params = sum(p.numel() for p in self.parameters())
-#       #        print(f"Model parameters: {n_params / 1e6:.2f}M")
-#
-# ──────────────────────────────────────────────────────────────────────────
-#
-#   def _init_weights(self, module):
-#       """Apply custom weight initialization to all sub-modules."""
-#       # TODO:
-#       #   GPT-2 style initialization:
-#       #
-#       #   if isinstance(module, nn.Linear):
-#       #       torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
-#       #       if module.bias is not None:
-#       #           torch.nn.init.zeros_(module.bias)
-#       #
-#       #   elif isinstance(module, nn.Embedding):
-#       #       torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
-#       #
-#       #   WHY std=0.02?
-#       #   It keeps initial outputs small so the model starts with nearly
-#       #   uniform predictions, and gradients don't explode in early training.
-#       #
-#       #   ADVANCED (optional): GPT-2 scales residual projections by
-#       #   1/sqrt(2 * n_layers) to account for the accumulation through
-#       #   the residual stream.  You'd apply this to the output projection
-#       #   of attention (c_proj) and the down projection of MLP (fc_down).
-#
+# CLASS: GPT(nn.Module) 
+class GPT(nn.Module):
+
+    def __init__(self, config):
+        pass
+        # TODO:
+        super().__init__()  
+
+        #   1. Store the config: 
+        self.config = config
+
+        #   2. Create the embedding layers:
+        self.tok_emb = nn.Embedding(config.vocab_size, config.d_model)
+        self.pos_emb = nn.Embedding(config.block_size, config.d_model)
+        self.drop    = nn.Dropout(config.dropout)
+    
+        #   3. Create the stack of transformer blocks:
+        self.blocks = nn.ModuleList([
+            TransformerBlock(config) for _ in range(config.n_layers)
+        ])
+        #        Use nn.ModuleList, NOT a plain Python list!
+        #           A plain list won't register parameters with PyTorch.
+    
+        #   5. Final layer norm:
+        self.ln_f = RMSNorm(config.d_model)
+        #
+        #   6. Language model head (projects d_model → vocab_size):
+        #        self.lm_head = nn.Linear(config.d_model, config.vocab_size, bias=False)
+        #
+        #   7. ★ WEIGHT TYING ★
+        #        self.tok_emb.weight = self.lm_head.weight
+        #
+        #        This makes the input embedding and the output projection
+        #        share the SAME weight matrix.  Why?
+        #        - Reduces total parameters by ~vocab_size × d_model
+        #        - The embedding learns "what does each token mean" and the
+        #          LM head learns "which token should come next" — these are
+        #          related tasks, so sharing weights is beneficial.
+        #        - Used in GPT-2, LLaMA, and most modern LLMs.
+        #
+        #   8. Initialize weights:
+        #        self.apply(self._init_weights)
+        #
+        #   9. Print total parameter count (nice for sanity checking):
+        #        n_params = sum(p.numel() for p in self.parameters())
+        #        print(f"Model parameters: {n_params / 1e6:.2f}M")
+
+    # ──────────────────────────────────────────────────────────────────────────
+    #
+    #   def _init_weights(self, module):
+    #       """Apply custom weight initialization to all sub-modules."""
+    #       # TODO:
+    #       #   GPT-2 style initialization:
+    #       #
+    #       #   if isinstance(module, nn.Linear):
+    #       #       torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+    #       #       if module.bias is not None:
+    #       #           torch.nn.init.zeros_(module.bias)
+    #       #
+    #       #   elif isinstance(module, nn.Embedding):
+    #       #       torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+    #       #
+    #       #   WHY std=0.02?
+    #       #   It keeps initial outputs small so the model starts with nearly
+    #       #   uniform predictions, and gradients don't explode in early training.
+    #       #
+    #       #   ADVANCED (optional): GPT-2 scales residual projections by
+    #       #   1/sqrt(2 * n_layers) to account for the accumulation through
+    #       #   the residual stream.  You'd apply this to the output projection
+    #       #   of attention (c_proj) and the down projection of MLP (fc_down).
+
 # ──────────────────────────────────────────────────────────────────────────
 #
 #   def forward(self, idx, targets=None):
@@ -178,7 +182,6 @@
 #       #
 #       #   return idx
 #
-# ══════════════════════════════════════════════════════════════════════════
 # ── TESTING HINT ──
 #   config = GPTConfig(vocab_size=100, d_model=64, n_heads=4, n_layers=2, block_size=32)
 #   model = GPT(config)
