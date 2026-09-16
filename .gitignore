@@ -1,0 +1,13 @@
+# .npy files
+*.npy
+
+# inputs
+*.txt
+!requirements.txt
+
+#metadata
+*.json
+
+# __pycache__
+__pycache__
+
