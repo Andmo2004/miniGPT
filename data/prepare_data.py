@@ -21,7 +21,7 @@ import tiktoken
 #   def build_char_tokenizer(text):
 #       # TODO:
 #       #   1. Get sorted list of unique characters:
-#       #   2. Build char→int and int→char mappings:
+#       #   2. Build char->int and int->char mappings:
 #       #   3. Create encode/decode functions:
 #       #   4. Save the mappings (pickle or json) for later use
 #       #   5. Return encode, decode, vocab_size

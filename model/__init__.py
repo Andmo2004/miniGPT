@@ -9,3 +9,4 @@ from model.norm import RMSNorm
 from model.attention import CausalSelfAttention
 from model.mlp import MLP
 from model.block import TransformerBlock
+from model.gpt import GPT

@@ -16,7 +16,7 @@ import torch.nn.functional as F
 #
 #   x (B, T, d_model)
 #     │
-#     ├─► Linear(d_model → d_ff, bias=config.bias)   # "up" projection
+#     ├─► Linear(d_model -> d_ff, bias=config.bias)   # "up" projection
 #     │
 #     ├─► GELU activation                             # non-linearity
 #     │        NOTE: use nn.GELU(approximate='tanh') for the fast variant
@@ -26,7 +26,7 @@ import torch.nn.functional as F
 #     │
 #     ├─► Dropout(config.dropout)
 #     │
-#     └─► Linear(d_ff → d_model, bias=config.bias)   # "down" projection
+#     └─► Linear(d_ff -> d_model, bias=config.bias)   # "down" projection
 #
 #   output (B, T, d_model)
 #
@@ -50,9 +50,9 @@ class MLP(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """ Forward pass through the MLP block """
         # TODO:
-        #   1. x = self.fc_up(x)       # (B,T,d_model) → (B,T,d_ff)
+        #   1. x = self.fc_up(x)       # (B,T,d_model) -> (B,T,d_ff)
         #   2. x = self.act(x)         # element-wise GELU
-        #   3. x = self.fc_down(x)     # (B,T,d_ff) → (B,T,d_model)
+        #   3. x = self.fc_down(x)     # (B,T,d_ff) -> (B,T,d_model)
         #   4. x = self.dropout(x)
         #   5. return x
 
@@ -65,10 +65,10 @@ class MLP(nn.Module):
 
 # ── SwiGLU variant (used in LLaMA) ──
 #   Instead of GELU, SwiGLU uses a *gating* mechanism:
-#     gate   = Linear(d_model → d_ff)
-#     value  = Linear(d_model → d_ff)
+#     gate   = Linear(d_model -> d_ff)
+#     value  = Linear(d_model -> d_ff)
 #     hidden = SiLU(gate) * value       # element-wise gating
-#     out    = Linear(d_ff → d_model)(hidden)
+#     out    = Linear(d_ff -> d_model)(hidden)
 #   This needs THREE linear layers.  If you implement this, store all
 #   three as attributes and modify forward() accordingly.
 

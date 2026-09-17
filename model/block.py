@@ -3,9 +3,9 @@
 import torch
 import torch.nn as nn
 
-from norm import RMSNorm
-from attention import CausalSelfAttention
-from mlp import MLP, SwiGLU
+from model.norm import RMSNorm
+from model.attention import CausalSelfAttention
+from model.mlp import MLP, SwiGLU
 
 # TODO: Implement a single Transformer decoder block.
 #
@@ -46,7 +46,7 @@ class TransformerBlock(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor: 
         # TODO:
-        #   Shape: (B, T, d_model) → (B, T, d_model) — dimensions never change.
+        #   Shape: (B, T, d_model) -> (B, T, d_model) — dimensions never change.
 
         x = x + self.attn(self.norm1(x))   # residual around attention
         x = x + self.mlp(self.norm2(x))    # residual around MLP

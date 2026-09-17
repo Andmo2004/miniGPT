@@ -44,7 +44,7 @@ class RMSNorm(nn.Module):
         #      (rsqrt = 1/sqrt, avoids separate sqrt + division)
         #   3. Scale: return x_norm * self.gamma
         #
-        # Expected input/output shape:  (B, T, d_model) → (B, T, d_model)
+        # Expected input/output shape:  (B, T, d_model) -> (B, T, d_model)
         # B: Batch size, T: Sequence length, d_model: Hidden dimension
         mean_sq = x.pow(2).mean(dim=-1, keepdim=True)
         x_norm = x*torch.rsqrt(mean_sq + self.eps)

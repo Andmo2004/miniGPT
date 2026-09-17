@@ -65,8 +65,8 @@ class CausalSelfAttention(nn.Module):
         self.c_proj = nn.Linear(config.d_model, config.d_model, bias=config.bias)        
         
         #   6. Dropout layers:
-        self.attn_dropout = nn.Dropout(config.Dropout)
-        self.resid_dropout = nn.Dropout(config.Dropout)
+        self.attn_dropout = nn.Dropout(config.dropout)
+        self.resid_dropout = nn.Dropout(config.dropout)
 
         #   7. Register the causal mask as a buffer (not a parameter!):
         #        This is a lower-triangular boolean matrix of shape
