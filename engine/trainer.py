@@ -307,11 +307,30 @@ def train(model, train_loader, val_loader, config, resume_from=None):
                 os.path.join(out_dir, f"checkpoint_{iter_num}.pt"), use_grad_scaler,
             )
 
+    # Final evaluation if no validation was performed yet or if eval_interval divides max_iters
+    if best_val_loss == float("inf") or config.max_iters % config.eval_interval == 0:
+        val_loss = estimate_loss(model, val_loader, config, amp_ctx)
+        print(f"  -> final val loss: {val_loss:.4f}")
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            save_checkpoint(
+                model, optimizer, scaler, config.max_iters, best_val_loss, config,
+                os.path.join(out_dir, "best_model.pt"), use_grad_scaler,
+            )
+
     # Final save
+    final_path = os.path.join(out_dir, "final_model.pt")
+    best_path = os.path.join(out_dir, "best_model.pt")
     save_checkpoint(
         model, optimizer, scaler, config.max_iters, best_val_loss, config,
-        os.path.join(out_dir, "final_model.pt"), use_grad_scaler,
+        final_path, use_grad_scaler,
     )
+    if not os.path.exists(best_path):
+        save_checkpoint(
+            model, optimizer, scaler, config.max_iters, best_val_loss, config,
+            best_path, use_grad_scaler,
+        )
+
     total_time = time.time() - t0
     print(f"Training complete! Total time: {total_time:.1f}s")
     print(f"Total tokens processed: {tokens_seen:,}")

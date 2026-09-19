@@ -81,17 +81,17 @@ class GPTConfig:
     mlp_type    : str   = "gelu"    # "gelu" or "swiglu"
 
     #   ── Training ──
-    batch_size     : int   = 64
+    batch_size     : int   = 32
     learning_rate  : float = 3e-4
     weight_decay   : float = 0.1
-    max_iters      : int   = 5000
-    warmup_iters   : int   = 500
+    max_iters      : int   = 20000
+    warmup_iters   : int   = 1000
     grad_clip      : float = 1.0
     eval_interval  : int   = 250
     eval_iters     : int   = 50
     save_interval  : int   = 1000   # periodic checkpoint interval
     log_interval   : int   = 100    # training loss print interval
-    grad_accumulation_steps : int = 1  # micro-batch accumulation
+    grad_accumulation_steps : int = 2  # micro-batch accumulation
     use_amp        : bool  = False
 
     #   ── System ──

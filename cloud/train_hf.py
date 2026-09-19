@@ -1,24 +1,37 @@
 """
-Train miniGPT on a Kaggle GPU and upload the trained artifacts
+Train miniGPT on a Kaggle GPU (or HF Jobs) and upload the trained artifacts
 to the Hugging Face Hub.
+
+Profiles:
+  - Smoke Test: Automatically activated if MAX_ITERS <= 10 or SMOKE_TEST=1.
+    Runs fast 200k tokens prep, 5 iters, 5 eval, 5 save, and uploads artifacts.
+  - Real Training: Defaults to 20,000 iters, 100M tokens TinyStories, 1,000 warmup,
+    eval every 250 iters, save every 1,000 iters.
 
 Required environment variables:
     HF_TOKEN
     HF_REPO_ID
 
 Optional environment variables:
-    MAX_ITERS=5000
-    BATCH_SIZE=64
+    MAX_ITERS=20000
+    WARMUP_ITERS=1000
+    BATCH_SIZE=32
     GRAD_ACCUM=2
     D_MODEL=384
     N_LAYERS=6
     N_HEADS=6
     BLOCK_SIZE=256
     MLP_TYPE=gelu
+    LEARNING_RATE=3e-4
+    EVAL_INTERVAL=250
+    SAVE_INTERVAL=1000
+    DATASET=tinystories
+    MAX_TRAIN_TOKENS=100000000
+    MAX_VAL_TOKENS=1000000
 
 This script is designed to be executed with:
 
-    uv run train_hf.py
+    uv run cloud/train_hf.py
 """
 
 # /// script
@@ -29,6 +42,7 @@ This script is designed to be executed with:
 #   "tiktoken",
 #   "huggingface_hub",
 #   "wrapt",
+#   "datasets",
 # ]
 # ///
 
@@ -58,7 +72,7 @@ def get_env(name, default):
 
 def main():
     # ------------------------------------------------------------------
-    # Environment
+    # Environment & Secrets
     # ------------------------------------------------------------------
 
     token = os.environ.get("HF_TOKEN")
@@ -78,17 +92,33 @@ def main():
     print(f"HF repository: {hf_repo_id}", flush=True)
 
     # ------------------------------------------------------------------
-    # Configuration
+    # Configuration & Profiles (Smoke Test vs Real Training)
     # ------------------------------------------------------------------
 
-    max_iters_val = int(get_env("MAX_ITERS", "5000"))
-    warmup_env = os.getenv("WARMUP_ITERS")
-    if warmup_env is not None:
-        warmup_iters = int(warmup_env)
-    else:
-        warmup_iters = min(500, max_iters_val)
+    raw_max_iters = get_env("MAX_ITERS", "20000")
+    max_iters_val = int(raw_max_iters)
+    is_smoke_test = max_iters_val <= 10 or os.getenv("SMOKE_TEST", "0") == "1"
 
-    batch_size = get_env("BATCH_SIZE", "64")
+    if is_smoke_test:
+        default_warmup = min(5, max_iters_val)
+        default_eval = max_iters_val
+        default_save = max_iters_val
+        default_max_train_tokens = "200000"
+        default_max_val_tokens = "20000"
+        profile_name = "Smoke Test (Quick Verification)"
+    else:
+        default_warmup = 1000
+        default_eval = 250
+        default_save = 1000
+        default_max_train_tokens = "100000000"
+        default_max_val_tokens = "1000000"
+        profile_name = "Real Training"
+
+    warmup_iters = int(get_env("WARMUP_ITERS", str(default_warmup)))
+    eval_interval = int(get_env("EVAL_INTERVAL", str(default_eval)))
+    save_interval = int(get_env("SAVE_INTERVAL", str(default_save)))
+
+    batch_size = get_env("BATCH_SIZE", "32")
     grad_accum = get_env("GRAD_ACCUM", "2")
     d_model = get_env("D_MODEL", "384")
     n_layers = get_env("N_LAYERS", "6")
@@ -96,22 +126,31 @@ def main():
     block_size = get_env("BLOCK_SIZE", "256")
     mlp_type = get_env("MLP_TYPE", "gelu")
     learning_rate = get_env("LEARNING_RATE", "3e-4")
-    eval_interval = get_env("EVAL_INTERVAL", "250")
-    save_interval = get_env("SAVE_INTERVAL", "1000")
 
-    print("\nTraining configuration:", flush=True)
-    print(f"  MAX_ITERS     = {max_iters_val}", flush=True)
-    print(f"  WARMUP_ITERS  = {warmup_iters}", flush=True)
-    print(f"  BATCH_SIZE    = {batch_size}", flush=True)
-    print(f"  GRAD_ACCUM    = {grad_accum}", flush=True)
-    print(f"  D_MODEL       = {d_model}", flush=True)
-    print(f"  N_LAYERS      = {n_layers}", flush=True)
-    print(f"  N_HEADS       = {n_heads}", flush=True)
-    print(f"  BLOCK_SIZE    = {block_size}", flush=True)
-    print(f"  MLP_TYPE      = {mlp_type}", flush=True)
-    print(f"  LEARNING_RATE = {learning_rate}", flush=True)
-    print(f"  EVAL_INTERVAL = {eval_interval}", flush=True)
-    print(f"  SAVE_INTERVAL = {save_interval}", flush=True)
+    dataset_name = get_env("DATASET", "tinystories")
+    max_train_tokens = get_env("MAX_TRAIN_TOKENS", default_max_train_tokens)
+    max_val_tokens = get_env("MAX_VAL_TOKENS", default_max_val_tokens)
+
+    print("=" * 60, flush=True)
+    print(f" Profile: {profile_name}", flush=True)
+    print("=" * 60, flush=True)
+    print(f"  DATASET          = {dataset_name}", flush=True)
+    print(f"  MAX_TRAIN_TOKENS = {int(max_train_tokens):,}", flush=True)
+    print(f"  MAX_VAL_TOKENS   = {int(max_val_tokens):,}", flush=True)
+    print(f"  MAX_ITERS        = {max_iters_val}", flush=True)
+    print(f"  WARMUP_ITERS     = {warmup_iters}", flush=True)
+    print(f"  BATCH_SIZE       = {batch_size}", flush=True)
+    print(f"  GRAD_ACCUM       = {grad_accum}", flush=True)
+    print(f"  EFFECTIVE_BATCH  = {int(batch_size) * int(grad_accum)}", flush=True)
+    print(f"  D_MODEL          = {d_model}", flush=True)
+    print(f"  N_LAYERS         = {n_layers}", flush=True)
+    print(f"  N_HEADS          = {n_heads}", flush=True)
+    print(f"  BLOCK_SIZE       = {block_size}", flush=True)
+    print(f"  MLP_TYPE         = {mlp_type}", flush=True)
+    print(f"  LEARNING_RATE    = {learning_rate}", flush=True)
+    print(f"  EVAL_INTERVAL    = {eval_interval}", flush=True)
+    print(f"  SAVE_INTERVAL    = {save_interval}", flush=True)
+    print("=" * 60, flush=True)
 
     # ------------------------------------------------------------------
     # Prepare working directory
@@ -138,15 +177,19 @@ def main():
     # Prepare dataset
     # ------------------------------------------------------------------
 
-    print("\nPreparing dataset...", flush=True)
+    print(f"\nPreparing dataset ({dataset_name})...", flush=True)
 
-    run(
-        [
-            "python",
-            "data/prepare_data.py",
-        ],
-        cwd=WORKDIR,
-    )
+    prep_cmd = [
+        "python",
+        "data/prepare_data.py",
+        "--dataset",
+        dataset_name,
+        "--max_train_tokens",
+        str(max_train_tokens),
+        "--max_val_tokens",
+        str(max_val_tokens),
+    ]
+    run(prep_cmd, cwd=WORKDIR)
 
     # ------------------------------------------------------------------
     # Train
@@ -183,9 +226,9 @@ def main():
             "--learning_rate",
             learning_rate,
             "--eval_interval",
-            eval_interval,
+            str(eval_interval),
             "--save_interval",
-            save_interval,
+            str(save_interval),
             "--use_amp",
         ],
         cwd=WORKDIR,
