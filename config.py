@@ -1,7 +1,6 @@
 # config.py – Hyperparameter configuration for miniGPT
 
-from torch.distributed.rpc import server_process_global_profiler
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict, fields
 import torch
 
 # TODO: Create a dataclass (or plain class) called `GPTConfig` that holds
@@ -26,6 +25,8 @@ import torch
 #   dropout     : float = 0.1     # Dropout probability applied in attention and MLP.
 #   bias        : bool  = False   # Whether to use bias in Linear layers and LayerNorm.
 #                                  # GPT-2 uses True; modern practice often sets False.
+#   mlp_type    : str   = "gelu"  # MLP activation type: "gelu" or "swiglu".
+#
 #   ── Training ──
 #   batch_size     : int   = 64
 #   learning_rate  : float = 3e-4    # Peak LR for AdamW.
@@ -35,7 +36,10 @@ import torch
 #   grad_clip      : float = 1.0     # Max gradient norm (0.0 = disabled).
 #   eval_interval  : int   = 250     # How often (in iters) to run validation.
 #   eval_iters     : int   = 50      # Number of batches used to estimate val loss.
-#   use_amp        : bool  = False   # Use automatic mixed precision (float16).
+#   save_interval  : int   = 1000    # How often (in iters) to save periodic checkpoints.
+#   log_interval   : int   = 100     # How often (in iters) to print training loss.
+#   grad_accumulation_steps : int = 1  # Number of micro-batches to accumulate before stepping.
+#   use_amp        : bool  = False   # Use automatic mixed precision (float16/bfloat16).
 #                                     #   MPS NOTE: AMP with GradScaler is NOT fully supported
 #                                     #   on MPS as of PyTorch 2.x. Set to False for MPS.
 #                                     #   You CAN still use torch.amp.autocast('mps', dtype=torch.float16)
@@ -74,6 +78,7 @@ class GPTConfig:
     block_size  : int   = 256
     dropout     : float = 0.1
     bias        : bool  = False
+    mlp_type    : str   = "gelu"    # "gelu" or "swiglu"
 
     #   ── Training ──
     batch_size     : int   = 64
@@ -84,15 +89,24 @@ class GPTConfig:
     grad_clip      : float = 1.0
     eval_interval  : int   = 250
     eval_iters     : int   = 50
+    save_interval  : int   = 1000   # periodic checkpoint interval
+    log_interval   : int   = 100    # training loss print interval
+    grad_accumulation_steps : int = 1  # micro-batch accumulation
     use_amp        : bool  = False
 
     #   ── System ──
+    out_dir    : str = "runs"   # output directory for checkpoints and logs
     device : str = 'mps' if torch.backends.mps.is_available() else \
                      'cuda' if torch.cuda.is_available() else 'cpu'
     seed   : int = 42
 
     def __post_init__(self):
         """ Post-initialisation method for validating hyper-parameters """
+        self._validate()
+
+    def _validate(self):
+        """ Run all validation checks. Called by __post_init__ and can be
+        called explicitly after modifying fields. """
         
         # 1. Check if d_model is divisible by n_heads
         assert self.d_model % self.n_heads == 0, f"d_model ({self.d_model}) has to be divisible by n_heads ({self.n_heads})"
@@ -106,6 +120,10 @@ class GPTConfig:
         assert self.eval_interval > 0, f"eval_interval ({self.eval_interval}) has to be greater than 0"
         assert self.eval_iters > 0, f"eval_iters ({self.eval_iters}) has to be greater than 0"
         assert self.seed > 0, f"seed ({self.seed}) has to be greater than 0"
+        assert self.mlp_type in ("gelu", "swiglu"), f"mlp_type must be 'gelu' or 'swiglu', got '{self.mlp_type}'"
+        assert self.save_interval > 0, f"save_interval ({self.save_interval}) has to be greater than 0"
+        assert self.log_interval > 0, f"log_interval ({self.log_interval}) has to be greater than 0"
+        assert self.grad_accumulation_steps >= 1, f"grad_accumulation_steps ({self.grad_accumulation_steps}) has to be >= 1"
 
         # 3. Optional d_ff
         if self.d_ff is None:
@@ -131,10 +149,13 @@ class GPTConfig:
 # - Helper method for creating config from a dictionary
     @classmethod
     def from_dict(cls, d: dict):
-        """ Create a GPTConfig instance from a dictionary """
-        return cls(**d)
+        """ Create a GPTConfig instance from a dictionary.
+        Ignores keys that are not valid GPTConfig fields. """
+        valid_keys = {f.name for f in fields(cls)}
+        filtered = {k: v for k, v in d.items() if k in valid_keys}
+        return cls(**filtered)
 
     def to_dict(self):
         """ Convert a GPTConfig instance to a dictionary """
-        return self.__dict__
+        return asdict(self)
 

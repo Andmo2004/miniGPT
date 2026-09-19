@@ -53,40 +53,67 @@ def top_p_filtering(logits, top_p):
     sorted_logits[sorted_mask] = float('-inf')
     
     #   5. Unsort back to original order:
-    logits = sorted_logits.scatter(1, sorted_indices, sorted_logits)
+    #      FIX: Use a fresh zeros tensor as scatter destination so that
+    #      the -inf values land in their correct original positions.
+    logits = torch.zeros_like(sorted_logits).scatter(1, sorted_indices, sorted_logits)
     return logits
 
 #  FUNCTION: generate_text(model, tokenizer, prompt, ...) 
-def generate_text(model, encode_fn, decode_fn, prompt, max_new_tokens=200,temperature=0.8, top_k=None, top_p=None, device='cpu'):
+def generate_text(model, encode_fn, decode_fn, prompt, max_new_tokens=200,
+                  temperature=0.8, top_k=None, top_p=None, device='cpu',
+                  seed=None):
     """
     Full generation pipeline: encode prompt -> generate -> decode.
+    
+    Args:
+        model: The GPT model.
+        encode_fn: Tokenizer encode function.
+        decode_fn: Tokenizer decode function.
+        prompt: Input text string.
+        max_new_tokens: Maximum number of tokens to generate.
+        temperature: Sampling temperature. 0.0 = greedy (argmax).
+        top_k: Top-k filtering threshold (None to disable).
+        top_p: Top-p nucleus sampling threshold (None to disable).
+        device: Device to run generation on.
+        seed: Random seed for reproducibility (None for non-deterministic).
     """
     # TODO:
     
-    #   1. Encode the prompt string into token IDs:
+    #   1. Set seed if provided for reproducible generation:
+    if seed is not None:
+        torch.manual_seed(seed)
+    
+    #   2. Encode the prompt string into token IDs:
     token_ids = encode_fn(prompt)
     idx = torch.tensor([token_ids], dtype=torch.long, device=device)
     
-    #   2. Set model to eval mode:
+    #   3. Set model to eval mode:
     model.eval()
     
-    #   3. Use model.generate() or implement the loop here:
+    #   4. Autoregressive generation loop:
     with torch.no_grad():
         for _ in range(max_new_tokens):
             idx_cond = idx[:, -model.config.block_size:]
             logits, _ = model(idx_cond)
-            logits = logits[:, -1, :] / temperature
+            logits = logits[:, -1, :]  # (B, vocab_size)
     
-            if top_k is not None:
-                logits = top_k_filtering(logits, top_k)
-            if top_p is not None:
-                logits = top_p_filtering(logits, top_p)
+            # Greedy sampling: temperature == 0 means take argmax
+            if temperature == 0.0:
+                idx_next = logits.argmax(dim=-1, keepdim=True)
+            else:
+                logits = logits / temperature
     
-            probs = F.softmax(logits, dim=-1)
-            idx_next = torch.multinomial(probs, num_samples=1)
+                if top_k is not None:
+                    logits = top_k_filtering(logits, top_k)
+                if top_p is not None:
+                    logits = top_p_filtering(logits, top_p)
+    
+                probs = F.softmax(logits, dim=-1)
+                idx_next = torch.multinomial(probs, num_samples=1)
+    
             idx = torch.cat([idx, idx_next], dim=1)
     
-    #   4. Decode back to text:
+    #   5. Decode back to text:
     generated_ids = idx[0].tolist()
     
     return decode_fn(generated_ids)

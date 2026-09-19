@@ -58,8 +58,8 @@ class MLP(nn.Module):
 
         x = self.fc_up(x)
         x = self.act(x)
-        x = self.dropout(x)
         x = self.fc_down(x)
+        x = self.dropout(x)
 
         return x
 

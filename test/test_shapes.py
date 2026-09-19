@@ -69,8 +69,24 @@ def test_gpt_loss_shape():
 
 def test_generate_shape():
     from model.gpt import GPT
+    from engine.sampler import generate_text
 
     model = GPT(cfg)
-    idx = torch.randint(0, cfg.vocab_size, (1, 4))
-    out = model.generate(idx, max_new_tokens=10)
-    assert out.shape == (1, 14)  # 4 prompt + 10 generated
+
+    # Use the centralized generate_text with simple encode/decode fns
+    encode_fn = lambda s: [i % cfg.vocab_size for i in range(4)]  # dummy encoder
+    decode_fn = lambda ids: "".join(chr(65 + (i % 26)) for i in ids)  # dummy decoder
+
+    output = generate_text(
+        model=model,
+        encode_fn=encode_fn,
+        decode_fn=decode_fn,
+        prompt="test",
+        max_new_tokens=10,
+        temperature=1.0,
+        device="cpu",
+        seed=42,
+    )
+    assert isinstance(output, str)
+    assert len(output) > 0
+

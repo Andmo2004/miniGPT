@@ -41,8 +41,11 @@ class TransformerBlock(nn.Module):
         self.attn = CausalSelfAttention(config)
         self.norm2 = RMSNorm(config.d_model)
         
-        self.mlp = MLP(config) 
-        # self.mlp SwiGLU(config)
+        # Select MLP type based on config
+        if config.mlp_type == "swiglu":
+            self.mlp = SwiGLU(config)
+        else:
+            self.mlp = MLP(config)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor: 
         # TODO:

@@ -11,4 +11,10 @@
 # __pycache__
 __pycache__
 
+# Training outputs
+runs/
+checkpoints/
 *.pt
+
+# Virtual environment
+.venv/

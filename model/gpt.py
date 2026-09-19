@@ -146,44 +146,10 @@ class GPT(nn.Module):
 
         return logits, loss
 
-    @torch.no_grad()
-   
-    def generate(self, idx, max_new_tokens, temperature=1.0, top_k=None):
-        """
-        Autoregressive generation.  Given a context idx (B, T), produce
-        max_new_tokens additional tokens one at a time.
-        """
-        # TODO:
-        for _ in range(max_new_tokens):
-            
-            # 1. Crop context to block_size if needed:
-            idx_cond = idx if idx.size(1) <= self.config.block_size \
-                            else idx[:, -self.config.block_size:]
-        
-            # 2. Forward pass (no targets -> no loss):
-            logits, _ = self(idx_cond)
-        
-            # 3. Take logits for the LAST position only:
-            logits = logits[:, -1, :]         # (B, vocab_size)
-        
-            # 4. Apply temperature scaling:
-            logits = logits / temperature
-        
-            # 5. Optionally apply top-k filtering:
-            if top_k is not None:
-                v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
-                logits[logits < v[:, [-1]]] = float('-inf')
-    
-            # 6. Convert to probabilities:
-            probs = F.softmax(logits, dim=-1)
-    
-            # 7. Sample the next token:
-            idx_next = torch.multinomial(probs, num_samples=1)  # (B, 1)
-    
-            # 8. Append to the running context:
-            idx = torch.cat([idx, idx_next], dim=1)             # (B, T+1)
-        
-        return idx
+    # NOTE: Generation logic has been centralised in engine/sampler.py
+    #       Use engine.generate_text() for all text generation needs.
+    #       This avoids duplicating sampling strategies (top-k, top-p,
+    #       greedy, temperature, seed) across multiple locations.
 
 # TESTING
 if __name__ == "__main__":
