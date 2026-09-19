@@ -13,9 +13,27 @@ def configure_optimizer(model, config):
       - Parameters that should be weight-decayed (Linear weights, >=2D)
       - Parameters that should NOT be decayed (biases, norms, embeddings, 1D)
     """
-    # Separate parameters into decayed and non-decayed groups
-    decay_params = [p for n, p in model.named_parameters() if p.requires_grad and p.dim() >= 2]
-    no_decay_params = [p for n, p in model.named_parameters() if p.requires_grad and p.dim() < 2]
+    # Separate parameters into decayed and non-decayed groups.
+    # Weight decay should apply to Linear weights (>=2D) but NOT to:
+    #   - biases (1D)
+    #   - LayerNorm / RMSNorm parameters (1D)
+    #   - Embedding weights (2D, but should not be decayed)
+    # We check parameter names to correctly exclude embeddings.
+    decay_params = []
+    no_decay_params = []
+    for name, param in model.named_parameters():
+        if not param.requires_grad:
+            continue
+        # Embeddings: 2D but should not be decayed
+        if "emb" in name or isinstance(
+            dict(model.named_modules()).get(name.rsplit(".", 1)[0]),
+            torch.nn.Embedding,
+        ):
+            no_decay_params.append(param)
+        elif param.dim() >= 2:
+            decay_params.append(param)
+        else:
+            no_decay_params.append(param)
 
     optim_groups = [
         {"params": decay_params, "weight_decay": config.weight_decay},
