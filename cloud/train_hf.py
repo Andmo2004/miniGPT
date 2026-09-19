@@ -28,6 +28,7 @@ This script is designed to be executed with:
 #   "requests",
 #   "tiktoken",
 #   "huggingface_hub",
+#   "wrapt",
 # ]
 # ///
 
@@ -80,7 +81,13 @@ def main():
     # Configuration
     # ------------------------------------------------------------------
 
-    max_iters = get_env("MAX_ITERS", "5000")
+    max_iters_val = int(get_env("MAX_ITERS", "5000"))
+    warmup_env = os.getenv("WARMUP_ITERS")
+    if warmup_env is not None:
+        warmup_iters = int(warmup_env)
+    else:
+        warmup_iters = min(500, max_iters_val)
+
     batch_size = get_env("BATCH_SIZE", "64")
     grad_accum = get_env("GRAD_ACCUM", "2")
     d_model = get_env("D_MODEL", "384")
@@ -88,16 +95,23 @@ def main():
     n_heads = get_env("N_HEADS", "6")
     block_size = get_env("BLOCK_SIZE", "256")
     mlp_type = get_env("MLP_TYPE", "gelu")
+    learning_rate = get_env("LEARNING_RATE", "3e-4")
+    eval_interval = get_env("EVAL_INTERVAL", "250")
+    save_interval = get_env("SAVE_INTERVAL", "1000")
 
     print("\nTraining configuration:", flush=True)
-    print(f"  MAX_ITERS   = {max_iters}", flush=True)
-    print(f"  BATCH_SIZE  = {batch_size}", flush=True)
-    print(f"  GRAD_ACCUM  = {grad_accum}", flush=True)
-    print(f"  D_MODEL     = {d_model}", flush=True)
-    print(f"  N_LAYERS    = {n_layers}", flush=True)
-    print(f"  N_HEADS     = {n_heads}", flush=True)
-    print(f"  BLOCK_SIZE  = {block_size}", flush=True)
-    print(f"  MLP_TYPE    = {mlp_type}", flush=True)
+    print(f"  MAX_ITERS     = {max_iters_val}", flush=True)
+    print(f"  WARMUP_ITERS  = {warmup_iters}", flush=True)
+    print(f"  BATCH_SIZE    = {batch_size}", flush=True)
+    print(f"  GRAD_ACCUM    = {grad_accum}", flush=True)
+    print(f"  D_MODEL       = {d_model}", flush=True)
+    print(f"  N_LAYERS      = {n_layers}", flush=True)
+    print(f"  N_HEADS       = {n_heads}", flush=True)
+    print(f"  BLOCK_SIZE    = {block_size}", flush=True)
+    print(f"  MLP_TYPE      = {mlp_type}", flush=True)
+    print(f"  LEARNING_RATE = {learning_rate}", flush=True)
+    print(f"  EVAL_INTERVAL = {eval_interval}", flush=True)
+    print(f"  SAVE_INTERVAL = {save_interval}", flush=True)
 
     # ------------------------------------------------------------------
     # Prepare working directory
@@ -149,7 +163,9 @@ def main():
             "--out_dir",
             "runs",
             "--max_iters",
-            max_iters,
+            str(max_iters_val),
+            "--warmup_iters",
+            str(warmup_iters),
             "--batch_size",
             batch_size,
             "--grad_accumulation_steps",
@@ -164,6 +180,12 @@ def main():
             block_size,
             "--mlp_type",
             mlp_type,
+            "--learning_rate",
+            learning_rate,
+            "--eval_interval",
+            eval_interval,
+            "--save_interval",
+            save_interval,
             "--use_amp",
         ],
         cwd=WORKDIR,
@@ -184,10 +206,17 @@ def main():
         exist_ok=True,
     )
 
-    # Upload trained models.
+    # If best_model.pt was not produced (e.g. max_iters < eval_interval), copy final_model.pt
+    best_path = WORKDIR / "runs" / "best_model.pt"
+    final_path = WORKDIR / "runs" / "final_model.pt"
+    if final_path.exists() and not best_path.exists():
+        shutil.copy2(final_path, best_path)
+
+    # Upload trained models and checkpoints.
     for filename in (
         "best_model.pt",
         "final_model.pt",
+        "latest.pt",
     ):
         path = WORKDIR / "runs" / filename
 
@@ -204,7 +233,7 @@ def main():
                 repo_type="model",
             )
 
-        else:
+        elif filename != "latest.pt":
             print(
                 f"Warning: {filename} was not found.",
                 flush=True,

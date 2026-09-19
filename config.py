@@ -138,10 +138,10 @@ class GPTConfig:
         assert self.block_size > 0
         assert self.batch_size > 0
         assert self.learning_rate > 0
-        assert self.weight_decay > 0
+        assert self.weight_decay >= 0
         assert self.max_iters > 0
-        assert self.warmup_iters > 0
-        assert self.grad_clip > 0
+        assert self.warmup_iters >= 0
+        assert self.grad_clip >= 0
         assert self.eval_interval > 0
         assert self.eval_iters > 0
         assert self.seed > 0

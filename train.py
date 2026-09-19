@@ -27,6 +27,8 @@ def main():
     parser.add_argument("--batch_size", type=int, default=64, help="Batch size")
     parser.add_argument("--learning_rate", type=float, default=3e-4, help="Peak learning rate")
     parser.add_argument("--max_iters", type=int, default=5000, help="Total training iterations")
+    parser.add_argument("--warmup_iters", type=int, default=500,
+                        help="Linear warm-up steps before cosine decay")
     parser.add_argument("--eval_interval", type=int, default=250, help="Validation interval")
     parser.add_argument("--save_interval", type=int, default=1000, help="Checkpoint save interval")
     parser.add_argument("--log_interval", type=int, default=100, help="Logging interval")
@@ -54,6 +56,7 @@ def main():
         "batch_size": args.batch_size,
         "learning_rate": args.learning_rate,
         "max_iters": args.max_iters,
+        "warmup_iters": args.warmup_iters,
         "eval_interval": args.eval_interval,
         "save_interval": args.save_interval,
         "log_interval": args.log_interval,
@@ -91,6 +94,7 @@ def main():
     print(f"Grad accumulation steps: {config.grad_accumulation_steps}")
     print(f"Effective batch size: {config.batch_size * config.grad_accumulation_steps}")
     print(f"Total iterations: {config.max_iters}")
+    print(f"Warmup iterations: {config.warmup_iters}")
     print(f"Peak learning rate: {config.learning_rate:.2e}")
     print(f"AMP: {'ON' if config.use_amp else 'OFF'}")
     if args.resume:
