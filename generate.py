@@ -64,6 +64,15 @@ def main():
         config = GPTConfig()
         state_dict = checkpoint
 
+    # A checkpoint may have been trained on a different machine. Keep its
+    # architecture, but choose an inference device available on this host.
+    config.device = (
+        'cuda' if torch.cuda.is_available() else
+        'mps' if torch.backends.mps.is_available() else
+        'cpu'
+    )
+    print(f"Inference device: {config.device}")
+
     # 3. Tokenizer (BPE GPT-2 style used during preparation)
     enc = tiktoken.get_encoding("gpt2")
     encode_fn = enc.encode

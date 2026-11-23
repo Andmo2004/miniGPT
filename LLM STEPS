@@ -1,0 +1,96 @@
+The best way to build your first LLM without blindly copy-pasting is to approach it like a systems software project: break the system down into isolated mathematical components, define the tensor input/output shapes before writing a single line of logic, and write small unit tests for each block before assembling the whole network.
+
+---
+
+### Phase 1: The Essential PyTorch Concepts You Need
+
+PyTorch is essentially NumPy with two additions: **GPU acceleration** (`.to('cuda')`) and **Automatic Differentiation** (`loss.backward()`). You only need five basic primitives:
+
+1. **`nn.Module`:** The base class for everything. You override `__init__()` to declare parameters/submodules and `forward()` to define how tensors flow.
+2. **`nn.Linear(in_features, out_features, bias=False)`:** Standard affine transform ($xW^T$).
+3. **`nn.Embedding(vocab_size, d_model)`:** A simple lookup table mapping token IDs (integers) to dense vectors.
+4. **Tensor Reshaping & Permutation:** `tensor.view()`, `tensor.transpose()`, and `tensor.reshape()` are what you will use to split embedding dimensions into multi-head dimensions.
+5. **Broadcasting & Masking:** `torch.tril()` (lower-triangular matrix) and `tensor.masked_fill()` to hide future tokens.
+
+---
+
+### Phase 2: The Exact Architectural Modules to Implement
+
+A decoder-only Transformer consists of five modules built in sequence.
+
+```
+Token IDs -> [Embedding + Positional Info] 
+          -> [Transformer Block x N] (RMSNorm -> Attention -> RMSNorm -> MLP)
+          -> [Final RMSNorm] 
+          -> [Linear Head to Vocab] -> Logits
+
+```
+
+#### 1. RMSNorm (Root Mean Square Normalization)
+
+Simpler and faster than LayerNorm because it does not subtract the mean, only scales by variance.
+
+* **Equation:** $\text{RMSNorm}(x) = \frac{x}{\sqrt{\frac{1}{d} \sum_{i=1}^{d} x_i^2 + \epsilon}} \odot \gamma$
+* **Your task:** Create an `nn.Module` with a learnable weight $\gamma$ (`nn.Parameter(torch.ones(dim))`). In `forward(x)`, calculate the mean of squares across the last dimension, multiply by the inverse square root, and scale by $\gamma$.
+
+#### 2. Causal Multi-Head Self-Attention (The Core Engine)
+
+This is where 80% of your learning happens.
+
+* **Projections:** One linear layer mapping `d_model` to $3 \times d_{\text{model}}$ to get Queries ($Q$), Keys ($K$), and Values ($V$).
+* **Shape Transformation:** Split $Q, K, V$ from `(Batch, Seq_Len, d_model)` into `(Batch, Num_Heads, Seq_Len, Head_Dim)`.
+* **Attention Scores:** Compute $\frac{Q K^T}{\sqrt{d_k}}$. Shape becomes `(Batch, Num_Heads, Seq_Len, Seq_Len)`.
+* **Causal Mask:** Apply `masked_fill(mask == 0, float('-inf'))` so position $i$ cannot attend to position $> i$.
+* **Softmax & Value Mix:** Softmax across the last dimension, then matrix-multiply by $V$.
+* **Output Projection:** Concatenate heads back to `(Batch, Seq_Len, d_model)` and pass through an output `nn.Linear`.
+
+#### 3. Feed-Forward Network (MLP / SwiGLU)
+
+Applies a non-linear projection token-by-token.
+
+* Standard GPT uses: `Linear(d_model, 4 * d_model) -> GELU -> Linear(4 * d_model, d_model)`.
+* If you want a modern architecture (like LLaMA/Mistral), implement **SwiGLU**: three linear layers where two are multiplied element-wise after a SiLU activation.
+
+#### 4. The Transformer Block
+
+Wires the components together using **Pre-Norm** residual connections:
+
+
+$$x = x + \text{Attention}(\text{RMSNorm}(x))$$
+
+$$x = x + \text{MLP}(\text{RMSNorm}(x))$$
+
+#### 5. The Top-Level Language Model (`GPT`)
+
+* Combines the token embedding table, position encodings, stack of blocks (`nn.ModuleList`), final norm, and an `lm_head` linear layer that maps from `d_model` back to `vocab_size`.
+* **Weight Tying (Good practice):** Tie the weights of the token embedding table to the output `lm_head` (`self.lm_head.weight = self.token_embeddings.weight`). It cuts model parameters significantly.
+
+---
+
+### Phase 3: The Step-by-Step Build Order (How to Avoid Tutorial Traps)
+
+Don't write the whole script and run it hoping it works. Build it in stages:
+
+| Step | Goal | How to Verify It Independently |
+| --- | --- | --- |
+| **1. Tokenizer** | Train a minimal BPE tokenizer using Hugging Face's `tokenizers` library on plain text. | Encode `"Hello world"`, decode the IDs, verify the string matches. |
+| **2. Attention Block** | Write your Multi-Head Attention class. | Pass dummy tensor `x = torch.randn(2, 16, 128)` through it. Assert output shape is strictly `(2, 16, 128)`. |
+| **3. Overfit a Single Batch** | Connect the full model. Feed it **one single sentence** of 10 tokens. | Run standard AdamW optimizer for 50 steps. The Cross-Entropy loss **must drop below 0.1**. If it doesn't, your causal mask, shapes, or residual connections have a bug. |
+| **4. Data Pipeline** | Write a simple PyTorch `Dataset` / `DataLoader` reading chunks of token IDs. | Print `x` and `y` batches; verify that `y` is exactly `x` shifted right by 1 token (`y = x[:, 1:]`). |
+| **5. Full Training Loop** | Add Cosine Learning Rate decay with warmup, gradient clipping (`torch.nn.utils.clip_grad_norm_`), and mixed precision (`torch.amp.autocast`). | Train on a small dataset (e.g. TinyStories) and track training vs. validation loss. |
+| **6. Autoregressive Sampling** | Implement generation: take prompt, predict next token logits, apply temperature/top-$k$, append token, repeat. | Feed a prompt and verify it generates coherent English sentences. |
+
+---
+
+### Target Dimensions for Your First Run
+
+To iterate quickly on a standard GPU or Google Colab without waiting hours between experiments:
+
+* **Vocab Size:** ~8,000 to 10,000 (trained with BPE)
+* **Context Length:** 256 or 512 tokens
+* **Embedding Dim (`d_model`):** 256
+* **Layers:** 6
+* **Heads:** 4 or 8 (`head_dim = 64` or `32`)
+* **Total Parameters:** ~10M–15M
+
+A ~12M parameter model trained on a subset of **TinyStories** will begin forming grammatically correct English in under 45 minutes on any modern GPU.

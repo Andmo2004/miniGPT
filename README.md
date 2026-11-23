@@ -5,7 +5,6 @@
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)
 ![PyTorch](https://img.shields.io/badge/PyTorch-2.0%2B-EE4C2C?style=for-the-badge&logo=pytorch&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
-![Tests](https://img.shields.io/badge/Tests-21%20Passed-brightgreen?style=for-the-badge&logo=pytest&logoColor=white)
 ![Hardware](https://img.shields.io/badge/Hardware-CUDA%20%7C%20Apple%20MPS%20%7C%20CPU-blueviolet?style=for-the-badge)
 
 **A clean, modular, and educational implementation of an autoregressive Transformer decoder (GPT) written in pure PyTorch from scratch.**
@@ -18,6 +17,26 @@
 
 ---
 
+## Scope and local reproduction
+
+This is an educational experiment, not a production LLM or a hosted inference service. Small-scale training tests used TinyStories; model quality and results depend on the checkpoint and configuration. Generated datasets and checkpoints are not included in a fresh clone. No results or parameter count should be inferred from the portfolio's former simulated interface.
+
+The commands below use the existing CLI. Python 3.12.12, PyTorch 2.14.0 and pytest 9.1.1 were used for the local test run on 23 November 2026. Dependencies in `requirements.txt` are unpinned, so other versions can behave differently. The first use of the GPT-2 `tiktoken` encoding downloads tokenizer files; preparing TinyStories also needs network access. Running `generate.py` requires a compatible checkpoint. Inference chooses an available local CUDA, MPS or CPU device instead of relying on the device recorded during training.
+
+On 23 November 2026, a local CPU run generated text using an existing `runs/best_model.pt` checkpoint, prompt `Once upon a time, a little girl named Lily`, temperature 0.8, top-k 40 and seed 42. The checkpoint is not included in a fresh clone, and this sample is not a quality benchmark. The local test suite passed 22 tests on the same date.
+
+A CPU smoke test was also run with a temporary synthetic token dataset (vocabulary 64, one layer, one iteration). It completed the forward/backward, validation and checkpoint paths; with one warmup iteration its learning rate was zero, so this does not demonstrate learning or model quality. The synthetic data and checkpoints were kept outside the repository.
+
+To prepare a small dataset and run a short training experiment, after installation:
+
+```bash
+python data/prepare_data.py --dataset tinystories --smoke_test --data_dir data/tinystories-smoke
+python train.py --data_dir data/tinystories-smoke --out_dir runs/smoke --d_model 64 --n_layers 2 --n_heads 2 --block_size 64 --batch_size 2 --grad_accumulation_steps 1 --max_iters 2 --warmup_iters 1 --eval_interval 1 --save_interval 1 --log_interval 1
+python generate.py --checkpoint runs/smoke/final_model.pt --prompt "Once upon a time" --max_tokens 20
+```
+
+These training and generation commands are provided for reproduction but were not run end-to-end as a sequence during this review. They produce an experimental checkpoint, not a meaningful quality benchmark. Do not reuse an existing output directory if its checkpoints must be preserved.
+
 ## Key Features
 
 - **Built Completely from Scratch**: Every single component—RMSNorm, Causal Multi-Head Self-Attention, Feed-Forward layers (GELU & SwiGLU), residual blocks, and the full Transformer decoder—is implemented in pure PyTorch with clear, educational code.
@@ -26,7 +45,7 @@
   - **Modular MLP**: Choose between standard GPT-2 **GELU** (`approximate='tanh'`) or modern LLaMA-style **SwiGLU** (`SiLU(gate) * value`) via a single configuration flag.
   - **Weight Tying**: Input token embedding weights are tied with the final LM head projection matrix, drastically reducing parameter count while improving semantic representations.
   - **Fused Attention**: Single projection for Queries, Keys, and Values ($W_{qkv}$), scaled dot-product attention, and lower-triangular causal masking.
-- **Production-Ready Training Loop**:
+- **Training Loop**:
   - **Decoupled AdamW Optimizer**: Custom parameter grouping that applies weight decay only to 2D+ weight matrices (linear projections) while preserving 1D biases, norm scales, and embedding matrices.
   - **Cosine Learning Rate Scheduler**: Linear warmup followed by smooth cosine annealing decay to 10% of peak learning rate.
   - **Gradient Accumulation**: Enables training with large effective batch sizes on constrained consumer GPUs or Apple Silicon.
@@ -41,7 +60,7 @@
   - Built-in smoke testing flag (`--smoke_test`) for rapid local iteration.
 - **Cloud & Hugging Face Hub Integration**:
   - Out-of-the-box support for remote execution (Kaggle GPU, Hugging Face Jobs) via `cloud/train_hf.py`, with automatic artifact synchronization to Hugging Face Hub.
-- **21 Passing Unit Tests**:
+- **Unit Tests**:
   - Exhaustive test suite covering tensor dimensions, attention causality, weight initialization, single-batch overfitting sanity checks, and checkpoint serialization.
 
 ---
@@ -84,7 +103,7 @@ Input Tokens: (B, T)
 ### Mathematical Formulations
 
 #### 1. RMSNorm (Root Mean Square Layer Normalization)
-Unlike standard LayerNorm which computes both mean and variance, RMSNorm normalizes by the root-mean-square alone, reducing computational overhead by ~10–15%:
+Unlike standard LayerNorm which computes both mean and variance, RMSNorm normalizes by the root-mean-square alone, without subtracting the mean:
 $$\text{RMS}(x) = \sqrt{\frac{1}{d} \sum_{i=1}^{d} x_i^2 + \epsilon}, \quad \text{RMSNorm}(x) = \frac{x}{\text{RMS}(x)} \odot \gamma$$
 
 #### 2. Causal Multi-Head Self-Attention
@@ -130,7 +149,7 @@ miniGPT/
 ├── cloud/                # Remote execution & cloud workflows
 │   └── train_hf.py       # Standalone runner for Kaggle/Cloud GPU + Hugging Face Hub sync
 │
-├── test/                 # Test suite (21 unit tests)
+├── tests/                # Test suite
 │   ├── test_shapes.py    # Verifies forward pass tensor dimensions across all submodules
 │   ├── test_attention.py # Validates causality, attention masking, determinism, and variable length
 │   ├── test_overfit.py   # Single micro-batch sanity test (asserts loss converges < 0.1)
@@ -165,7 +184,7 @@ Run the full unit test suite:
 ```bash
 pytest
 ```
-*All 21 unit tests should pass in less than 2 seconds.*
+Run the tests in `tests/`; runtime depends on your machine.
 
 ---
 
@@ -386,18 +405,18 @@ model = GPT(cfg)
 
 ## Testing & Verification
 
-The project includes an automated test suite with **21 tests** covering core components:
+The project includes an automated test suite covering core components:
 
 ```bash
 pytest -v
 ```
 
 ### Test Breakdown:
-- **`test/test_shapes.py`**: Verifies tensor shapes through `RMSNorm`, `CausalSelfAttention`, `MLP`, `SwiGLU`, `TransformerBlock`, and the complete `GPT` model.
-- **`test/test_attention.py`**: Asserts attention causality (verifies upper-triangular masking prevents attending to future tokens), validates deterministic seed behavior, and verifies variable-length sequence handling.
-- **`test/test_overfit.py`**: Trains `miniGPT` on a single micro-batch to ensure gradients flow correctly and loss drops below $0.1$.
-- **`test/test_checkpoint.py`**: Tests full checkpoint saving, state loading, and config persistence across model instances.
-- **`test/test_config.py`**: Validates assertion checks, illegal parameter handling, and dictionary serialization roundtrips.
+- **`tests/test_shapes.py`**: Verifies tensor shapes through `RMSNorm`, `CausalSelfAttention`, `MLP`, `SwiGLU`, `TransformerBlock`, and the complete `GPT` model.
+- **`tests/test_attention.py`**: Asserts attention causality (verifies upper-triangular masking prevents attending to future tokens), validates deterministic seed behavior, and verifies variable-length sequence handling.
+- **`tests/test_overfit.py`**: Trains `miniGPT` on a single micro-batch to ensure gradients flow correctly and loss drops below $0.1$.
+- **`tests/test_checkpoint.py`**: Tests full checkpoint saving, state loading, and config persistence across model instances.
+- **`tests/test_config.py`**: Validates assertion checks, illegal parameter handling, and dictionary serialization roundtrips.
 
 ---
 
